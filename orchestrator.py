@@ -1,22 +1,39 @@
-# testing if this works :D(PLEASE WORK)
-# if i appear on github i hv been linked
-
+import os
+import sys
 import bpy
-
-def create_mars_test():
-    # 1. Clear scene
-    bpy.ops.object.select_all(action='SELECT')
-    bpy.ops.object.delete()
+# 1. Tell Blender where the custom library is
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
     
-    # 2. Add cube
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.5))
-    
-    # 3. Export (Ensure this folder exists in your Drive!)
-    output_path = "/content/drive/MyDrive/MARS/output/mars_test_cube.glb"
-    bpy.ops.export_scene.gltf(filepath=output_path)
-    print("--- SUCCESS: 3D CUBE GENERATED ---")
+import mars_lib
 
-if __name__ == "__main__":
-    create_mars_test()
+# 2. The Data Payload
+test_payload = {
+    "category": "Tables & desks",
+    "overall_bounding_box": {
+        "width_m": 1.0,
+        "depth_m": 0.75,
+        "height_m": 0.48
+    },
+    "vision_heuristics": {
+        "style_aesthetic": "industrial",
+        "leg_shape": "square",
+        "build_weight": "chunky",
+        "backrest_style": "none",
+        "has_armrests": False
+    }
+}
 
-#I ONLY PUSH CHANGES TO ORCHETRATOR.PY
+# 3. Trigger Execution
+my_table = mars_lib.build_table(test_payload)
+
+
+output_dir = "/content/drive/MyDrive/MARS/output/"
+os.makedirs(output_dir, exist_ok=True)  # Safety net: creates the folder if it's missing
+
+output_path = os.path.join(output_dir, "mars_test_table.glb")
+
+# Export the scene as a GLB
+bpy.ops.export_scene.gltf(filepath=output_path)
+print(f"\n✅ --- SUCCESS: 3D TABLE GENERATED AND SAVED TO {output_path} ---")

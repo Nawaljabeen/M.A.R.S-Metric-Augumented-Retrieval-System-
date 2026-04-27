@@ -21,10 +21,19 @@ import trimesh
 from mathutils import Vector
 from tqdm import tqdm
 
-from infinigen.core.nodes.node_info import DATATYPE_DIMS, DATATYPE_FIELDS
-
+# from infinigen.core.nodes.node_info import DATATYPE_DIMS, DATATYPE_FIELDS
+DATATYPE_DIMS = {}
+DATATYPE_FIELDS = {}
 from . import math as mutil
-from .logging import Suppress
+import logging  # Import Python's standard built-in logger instead!
+# from .logging import Suppress # Comment out Infinigen's custom logger
+
+# Create the dummy Suppress class so butil doesn't crash when it tries to silence prints
+class Suppress:
+    def __init__(self, *args, **kwargs): pass
+    def __enter__(self): pass
+    def __exit__(self, exc_type, exc_val, exc_tb): pass
+    def __call__(self, func): return func
 
 logger = logging.getLogger(__name__)
 
