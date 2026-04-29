@@ -9,22 +9,6 @@ if current_dir not in sys.path:
     
 import mars_lib
 
-# 2. The Data Payload
-test_payload = {
-    "category": "Tables & desks",
-    "overall_bounding_box": {
-        "width_m": 1.0,
-        "depth_m": 0.75,
-        "height_m": 0.48
-    },
-    "vision_heuristics": {
-        "style_aesthetic": "industrial",
-        "leg_shape": "square",
-        "build_weight": "chunky",
-        "backrest_style": "none",
-        "has_armrests": False
-    }
-}
 
 # 3. Trigger Execution
 test_payload = {
@@ -60,12 +44,15 @@ test_payload = {
         }
     ]
 }
+
+bpy.ops.object.select_all(action='SELECT')
+bpy.ops.object.delete()
+
 my_object = mars_lib.build_from_recipe(test_payload)
 
 bpy.context.view_layer.update()
 # 1. Clear scene
-bpy.ops.object.select_all(action='SELECT')
-bpy.ops.object.delete()
+
 output_dir = "/content/drive/MyDrive/MARS/output/"
 os.makedirs(output_dir, exist_ok=True)  # Safety net: creates the folder if it's missing
 
