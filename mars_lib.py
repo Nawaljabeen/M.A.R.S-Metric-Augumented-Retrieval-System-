@@ -1,79 +1,189 @@
 import bpy
-# Assuming your infinigen folder is in the same directory
-from infinigen import butil 
+import math
+from infinigen import butil
 
-def build_table(payload):
-    """
-    Constructs a low-fidelity procedural table proxy using RAG metrics and Vision heuristics.
-    """
-    print("\n🔨 [MARS_LIB] Initializing Table Construction...")
 
-    # 1. EXTRACT RAG METRICS (The Absolute Boundaries)
-    bbox = payload["overall_bounding_box"]
-    w = bbox["width_m"]
-    d = bbox["depth_m"]
-    h = bbox["height_m"]
-
-    # 2. EXTRACT VISION HEURISTICS
-    heuristics = payload["vision_heuristics"]
-    weight = heuristics.get("build_weight", "standard")
-    leg_shape = heuristics.get("leg_shape", "square")
-
-    # 3. APPLY HEURISTIC MATH (The Safety Net)
-    # We define exactly what "thin", "standard", and "chunky" mean in meters.
-    weight_map = {
-        "thin": {"top_thickness": 0.02, "leg_thickness": 0.03},
-        "standard": {"top_thickness": 0.04, "leg_thickness": 0.05},
-        "chunky": {"top_thickness": 0.08, "leg_thickness": 0.10}
-    }
+def spawn_surface(part, w, d, h, parent):
+    """Spawns flat boards, shelves, or soft cushions."""
+    thick = h * part.get("thickness_ratio", 0.05)
+    z_pos = h * part.get("z_position_ratio", 1.0)
     
-    # Safely grab the math, default to "standard" if the AI hallucinated a weird word
-    math_profile = weight_map.get(weight, weight_map["standard"])
-    top_thick = math_profile["top_thickness"]
-    leg_thick = math_profile["leg_thickness"]
+    # AI can scale things down (e.g., a shelf that fits inside table legs)
+    scale_w = w * part.get("scale_w", 1.0)
+    scale_d = d * part.get("scale_d", 1.0)
 
-    # Calculate leg height perfectly so they touch the floor and the bottom of the table
-    leg_height = h - top_thick
+    # 1. Spawn the base proxy
+    surf = butil.spawn_cube(size=1)
+    surf.name = f"MARS_Surface_{z_pos}"
+    surf.scale = (scale_w, scale_d, thick)
+    surf.location = (0, 0, z_pos - (thick / 2))
+    surf.parent = parent
 
-    # 4. CONSTRUCT GEOMETRY WITH BUTIL
-    print(f"   📐 Spawning Top: {w}x{d}x{top_thick}m")
+    # 2. ROTATION (Pitch Angle)
+    angle = part.get("pitch_angle", 0)
+    if angle != 0:
+        surf.rotation_euler = (math.radians(angle), 0, 0)
+
+    # 3. THE FINESSE: Is it a hard board or a soft cushion?
+    if part.get("is_cushion", False):
+        # Puff it up into a seat!
+        subsurf = surf.modifiers.new(name="Smooth", type='SUBSURF')
+        subsurf.levels = 3 
+        
+        cast = surf.modifiers.new(name="Puff", type='CAST')
+        cast.cast_type = 'SPHERE'
+        cast.factor = 0.6  # 0.0 is flat, 1.0 is a ball. 0.6 is a nice cushion.
+        
+        # Shade smooth for export
+        for poly in surf.data.polygons:
+            poly.use_smooth = True
+            
+    else:
+        # It's a hard board: Add a subtle Bevel so the edges catch light
+        bevel = surf.modifiers.new(name="Edge_Bevel", type='BEVEL')
+        bevel.width = 0.01 # 1cm rounded edge
+        bevel.segments = 3
+
+def spawn_support(part, w, d, h, parent):
+    """Spawns vertical or horizontal pillars (legs, stretchers)."""
+    # If AI doesn't specify, default to 4 square legs
+    count = part.get("count", 4)
+    shape = part.get("shape", "box")
     
-    # --- TABLETOP ---
-    top = butil.spawn_cube(size=1)
-    top.name = "MARS_TableTop"
-    top.scale = (w, d, top_thick)
-    # Move up so the top face rests perfectly at height 'h'
-    top.location = (0, 0, h - (top_thick / 2))
+    thick = part.get("thickness_m", 0.05)
+    z_top = h * part.get("z_position_ratio", 1.0) 
 
-    # --- LEGS ---
-    print(f"   🦵 Spawning 4 {leg_shape} legs (Height: {leg_height}m, Thick: {leg_thick}m)")
-    
-    # Calculate where the corners are, inset slightly so legs don't clip outside the top
-    x_offset = (w / 2) - (leg_thick / 2) - 0.01 
-    y_offset = (d / 2) - (leg_thick / 2) - 0.01
-    leg_z = leg_height / 2
+    # Math to push legs to the corners
+    x_off = (w / 2) - (thick / 2) - 0.01
+    y_off = (d / 2) - (thick / 2) - 0.01
 
-    corners = [
-        (x_offset, y_offset, leg_z),
-        (-x_offset, y_offset, leg_z),
-        (x_offset, -y_offset, leg_z),
-        (-x_offset, -y_offset, leg_z)
-    ]
+    # Decide where to place them based on count and asymmetry
+    locations = []
+    x_pos_mod = part.get("x_position", "center") # left, right, or center
 
-    for i, loc in enumerate(corners):
-        if leg_shape == "cylinder" or leg_shape == "tapered":
-            # For low-fi, a cylinder works perfectly as a proxy for tapered
-            leg = butil.spawn_cylinder(radius=leg_thick/2, depth=leg_height)
-        else: 
-            # Default to square block legs
+    if count == 4:
+        locations = [
+            (x_off, y_off, z_top / 2), (-x_off, y_off, z_top / 2),
+            (x_off, -y_off, z_top / 2), (-x_off, -y_off, z_top / 2)
+        ]
+    elif count == 2 and x_pos_mod == "left":
+        locations = [(-x_off, y_off, z_top / 2), (-x_off, -y_off, z_top / 2)]
+    elif count == 2 and x_pos_mod == "right":
+        locations = [(x_off, y_off, z_top / 2), (x_off, -y_off, z_top / 2)]
+    elif count == 1:
+        locations = [(0, 0, z_top / 2)] # Dead center (like a barstool)
+
+    # Spawn them!
+    for i, loc in enumerate(locations):
+        if shape == "cylinder":
+            leg = butil.spawn_cylinder(radius=thick/2, depth=z_top)
+            # Make cylinders smooth
+            for poly in leg.data.polygons:
+                poly.use_smooth = True
+        else:
             leg = butil.spawn_cube(size=1)
-            leg.scale = (leg_thick, leg_thick, leg_height)
-        
-        leg.name = f"MARS_Leg_{i+1}"
+            leg.scale = (thick, thick, z_top)
+            # Add finesse to box legs
+            bevel = leg.modifiers.new(name="Edge_Bevel", type='BEVEL')
+            bevel.width = 0.005
+            bevel.segments = 2
+            
+        leg.name = f"MARS_Support_{i+1}"
         leg.location = loc
-        
-        # Parent the legs to the tabletop so if you move the table, the legs follow!
-        butil.parent_to(leg, top)
+        leg.parent = parent
 
-    print("✅ [MARS_LIB] Table construction complete!")
-    return top
+
+def spawn_storage_box(part, w, d, h, parent):
+    """Spawns a solid geometric volume for cabinets, dressers, or desk pedestals."""
+    # Storage is usually thick, so default to 50% of the total height
+    thick = h * part.get("thickness_ratio", 0.5) 
+    z_pos = h * part.get("z_position_ratio", 0.5)
+
+    # Cabinets on desks usually don't take up the whole width
+    scale_w = w * part.get("scale_w", 1.0)
+    scale_d = d * part.get("scale_d", 1.0)
+
+    # X-Axis Asymmetry (Left, Right, Center)
+    x_off = 0
+    x_pos_mod = part.get("x_position", "center")
+    if x_pos_mod == "left":
+        x_off = -(w / 2) + (scale_w / 2)
+    elif x_pos_mod == "right":
+        x_off = (w / 2) - (scale_w / 2)
+
+    box = butil.spawn_cube(size=1)
+    box.name = f"MARS_Storage_{z_pos}"
+    box.scale = (scale_w, scale_d, thick)
+    box.location = (x_off, 0, z_pos) # Shift left/right, and up
+    box.parent = parent
+
+    # Finesse: Give it a nice, manufactured edge
+    bevel = box.modifiers.new(name="Edge_Bevel", type='BEVEL')
+    bevel.width = 0.005
+    bevel.segments = 3
+
+
+def spawn_base(part, w, d, h, parent):
+    """Spawns floor mounts like flat discs or crossed stars."""
+    shape = part.get("shape", "disc")
+    thick = 0.04 # Bases are generally thin plates
+    
+    # Create an invisible anchor point on the floor
+    base_anchor = butil.spawn_cube(size=0.001) 
+    base_anchor.name = "MARS_Base_Anchor"
+    base_anchor.location = (0, 0, thick / 2)
+    base_anchor.parent = parent
+
+    if shape == "disc":
+        # A heavy, flat circular plate
+        disc = butil.spawn_cylinder(radius=w/2, depth=thick)
+        disc.name = "MARS_Base_Disc"
+        disc.parent = base_anchor
+        # Shade smooth!
+        for poly in disc.data.polygons: 
+            poly.use_smooth = True
+            
+    elif shape == "star":
+        # A 4-pronged cross base (like an office chair)
+        for rot in [0, 90]:
+            leg = butil.spawn_cube(size=1)
+            leg.scale = (w, 0.06, thick)
+            leg.rotation_euler = (0, 0, math.radians(rot))
+            leg.parent = base_anchor
+
+
+def build_from_recipe(payload):
+    print("\n [MARS_LIB] Initializing Universal Assembly...")
+    
+    bbox = payload["overall_bounding_box"]
+    w, d, h = bbox["width_m"], bbox["depth_m"], bbox["height_m"]
+
+    # The Master Anchor (Everything glues to this)
+    master_parent = butil.spawn_cube(size=0.001)
+    master_parent.name = "MARS_Root"
+
+    # THE LOOP
+    for part in payload.get("component_recipe", []):
+        ptype = part.get("type")
+        
+        if ptype == "surface":
+            print(f"    Spawning Surface (Z: {part.get('z_position_ratio')})")
+            spawn_surface(part, w, d, h, master_parent)
+            
+        elif ptype == "support":
+            print(f"    Spawning Support ({part.get('count')} {part.get('shape')}s)")
+            spawn_support(part, w, d, h, master_parent)
+            
+        elif ptype == "storage_box":
+            print(f"    Spawning Storage ({part.get('x_position')})")
+            spawn_storage_box(part, w, d, h, master_parent)
+            
+        elif ptype == "base":
+            print(f"    Spawning Base ({part.get('shape')})")
+            spawn_base(part, w, d, h, master_parent)
+            
+        else:
+            print(f"   ⚠️ WARNING: AI hallucinated unknown component: {ptype}")
+
+    print("✅ [MARS_LIB] Assembly complete!")
+    return master_parent
