@@ -65,126 +65,177 @@ def spawn_surface(part, w, d, h, parent):
     butil.modify_mesh(surf, type='BEVEL', width=0.01, segments=3)
 
 def spawn_support(part, w, d, h, parent):
-    """Spawns vertical or horizontal pillars (legs, stretchers)."""
-    # If AI doesn't specify, default to 4 square legs
-    count = part.get("count", 4)
-    shape = part.get("shape", "box")
+    """Spawns table legs, chair legs, or bed frame pillars."""
     
+    # 1. Clean & Extract Data
+    count = part.get("count", 4)
+    shape = clean_string(part.get("shape", "box"))
     thick = part.get("thickness_m", 0.05)
     z_top = h * part.get("z_position_ratio", 1.0) 
+    y_pos_mod = clean_string(part.get("y_position", "center"))
 
-    # Math to push legs to the corners
+    #Safety Padding (Keeps legs 1cm inside the corners)
     x_off = (w / 2) - (thick / 2) - 0.01
     y_off = (d / 2) - (thick / 2) - 0.01
 
-    # Decide where to place them based on count and asymmetry
+    #  Location Routing Map
     locations = []
-    x_pos_mod = part.get("x_position", "center") # left, right, or center
-
     if count == 4:
+        # Standard corners
         locations = [
-            (x_off, y_off, z_top / 2), (-x_off, y_off, z_top / 2),
-            (x_off, -y_off, z_top / 2), (-x_off, -y_off, z_top / 2)
+            (x_off, y_off, z_top/2), 
+            (-x_off, y_off, z_top/2), 
+            (x_off, -y_off, z_top/2), 
+            (-x_off, -y_off, z_top/2)
         ]
-    elif count == 2 and x_pos_mod == "left":
-        locations = [(-x_off, y_off, z_top / 2), (-x_off, -y_off, z_top / 2)]
-    elif count == 2 and x_pos_mod == "right":
-        locations = [(x_off, y_off, z_top / 2), (x_off, -y_off, z_top / 2)]
-    elif count == 1:
-        locations = [(0, 0, z_top / 2)] # Dead center (like a barstool)
-
-    # Spawn them!
-    for i, loc in enumerate(locations):
-        if shape == "cylinder":
-            leg = butil.spawn_cylinder(radius=thick/2, depth=z_top)
-            # Make cylinders smooth
-            for poly in leg.data.polygons:
-                poly.use_smooth = True
+    elif count == 2:
+        #FIX: Y-Axis awareness for beds/sofas
+        if y_pos_mod == "back":
+            locations = [(x_off, y_off, z_top/2), (-x_off, y_off, z_top/2)]
+        elif y_pos_mod == "front":
+            locations = [(x_off, -y_off, z_top/2), (-x_off, -y_off, z_top/2)]
         else:
+            locations = [(x_off, 0, z_top/2), (-x_off, 0, z_top/2)] # Center sides
+    elif count == 3:
+        # FIX: Tripod logic (Two back, one front-center)
+        locations = [(x_off, y_off, z_top/2), (-x_off, y_off, z_top/2), (0, -y_off, z_top/2)]
+    else:
+        # Single pedestal (dead center)
+        locations = [(0, 0, z_top/2)] 
+
+    # 4. Geometry Generation Loop
+    for i, loc in enumerate(locations):
+        if shape in ["cylinder", "circular", "round"]:
+            # FIX: Native low-poly cylinder for smooth round legs (16 vertices is perfect for legs)
+            bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=thick/2, depth=z_top)
+            leg = bpy.context.active_object
+        else:
+            # Infinigen Proxy Box for square legs
             leg = butil.spawn_cube(size=1)
             leg.scale = (thick, thick, z_top)
-            # Add finesse to box legs
-            bevel = leg.modifiers.new(name="Edge_Bevel", type='BEVEL')
-            bevel.width = 0.005
-            bevel.segments = 2
-            
+
         leg.name = f"MARS_Support_{i+1}"
         leg.location = loc
         leg.parent = parent
+        
+        #  UNIVERSAL BEVEL: Soften sharp edges slightly 
+        # (width is smaller than the tabletop bevel so it doesn't break thin legs)
+        butil.modify_mesh(leg, type='BEVEL', width=0.005, segments=2)
 
 
 def spawn_storage_box(part, w, d, h, parent):
     """Spawns a solid geometric volume for cabinets, dressers, or desk pedestals."""
-    # Storage is usually thick, so default to 50% of the total height
+    
+    # 1. Clean & Extract Data
+    shape = clean_string(part.get("shape", "box"))
     thick = h * part.get("thickness_ratio", 0.5) 
-    z_pos = h * part.get("z_position_ratio", 0.5)
-
-    # Cabinets on desks usually don't take up the whole width
+    z_pos = h * part.get("z_position_ratio", 0.0) # Default to floor level if missing
+    
     scale_w = w * part.get("scale_w", 1.0)
     scale_d = d * part.get("scale_d", 1.0)
 
-    # X-Axis Asymmetry (Left, Right, Center)
+    # 🚨 FIX 1: X-Axis Asymmetry (Left, Right, Center) with Clean String
     x_off = 0
-    x_pos_mod = part.get("x_position", "center")
+    x_pos_mod = clean_string(part.get("x_position", "center"))
     if x_pos_mod == "left":
         x_off = -(w / 2) + (scale_w / 2)
     elif x_pos_mod == "right":
         x_off = (w / 2) - (scale_w / 2)
 
-    box = butil.spawn_cube(size=1)
+    # 🚨 FIX 2: Y-Axis Asymmetry (Front, Back, Center)
+    y_off = 0
+    y_pos_mod = clean_string(part.get("y_position", "center"))
+    if y_pos_mod == "front":
+        y_off = -(d / 2) + (scale_d / 2)
+    elif y_pos_mod == "back":
+        y_off = (d / 2) - (scale_d / 2)
+
+    # 🚨 FIX 3: Geometry Generation (In case of a round laundry basket or cylindrical pedestal)
+    if shape in ["cylinder", "circular", "oval"]:
+        bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=1, depth=thick)
+        box = bpy.context.active_object
+        box.scale = (scale_w / 2, scale_d / 2, 1)
+    else:
+        box = butil.spawn_cube(size=1)
+        box.scale = (scale_w, scale_d, thick)
+
     box.name = f"MARS_Storage_{z_pos}"
-    box.scale = (scale_w, scale_d, thick)
-    box.location = (x_off, 0, z_pos) # Shift left/right, and up
+    
+    # 🚨 FIX 4: Z-Axis Clipping math
+    # Assuming z_pos is the resting surface (like the floor), we shift UP by half thickness
+    box.location = (x_off, y_off, z_pos + (thick / 2)) 
     box.parent = parent
 
-    # Finesse: Give it a nice, manufactured edge
-    bevel = box.modifiers.new(name="Edge_Bevel", type='BEVEL')
-    bevel.width = 0.005
-    bevel.segments = 3
-
+    # 🚨 FIX 5: Universal Infinigen Bevel
+    butil.modify_mesh(box, type='BEVEL', width=0.005, segments=3)
 
 def spawn_base(part, w, d, h, parent):
     """Spawns floor mounts like flat discs or crossed stars."""
-    shape = part.get("shape", "disc")
-    thick = 0.04 # Bases are generally thin plates
     
-    # Create an invisible anchor point on the floor
+    # 1. Clean Data & Proportion Lock
+    shape = clean_string(part.get("shape", "disc"))
+    thick = 0.04  # Bases are generally thin plates
+    
+    # 🚨 FIX 1: Symmetry Lock. 
+    # Floor bases (discs/stars) must be perfectly symmetrical so they don't tip over.
+    # We lock the overall size to the smallest dimension of the bounding box.
+    diameter = min(w, d)
+
+    # 2. Create an invisible anchor point on the floor
     base_anchor = butil.spawn_cube(size=0.001) 
     base_anchor.name = "MARS_Base_Anchor"
-    base_anchor.location = (0, 0, thick / 2)
+    base_anchor.location = (0, 0, thick / 2) # Prevents Z-axis floor clipping
     base_anchor.parent = parent
 
-    if shape == "disc":
-        # A heavy, flat circular plate
-        disc = butil.spawn_cylinder(radius=w/2, depth=thick)
+    # 3. Geometry Generation
+    if shape in ["disc", "circular", "circle"]:
+        # 🚨 FIX 2: Native optimized 24-vertex cylinder
+        bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=1, depth=thick)
+        disc = bpy.context.active_object
         disc.name = "MARS_Base_Disc"
+        
+        # Scale X/Y to the locked radius. Z is 1 because depth is already set to 'thick'
+        disc.scale = (diameter / 2, diameter / 2, 1) 
         disc.parent = base_anchor
-        # Shade smooth!
-        for poly in disc.data.polygons: 
-            poly.use_smooth = True
-            
-    elif shape == "star":
+        
+        # 🚨 FIX 3: Universal Infinigen Bevel instead of manual shading loops
+        butil.modify_mesh(disc, type='BEVEL', width=0.005, segments=3)
+        
+    elif shape in ["star", "cross"]:
         # A 4-pronged cross base (like an office chair)
-        for rot in [0, 90]:
+        for i, rot in enumerate([0, 90]):
             leg = butil.spawn_cube(size=1)
-            leg.scale = (w, 0.06, thick)
+            leg.name = f"MARS_Base_Prong_{i+1}"
+            
+            # 🚨 FIX 4: Use 'diameter' so both crossing prongs are the exact same length
+            leg.scale = (diameter, 0.06, thick)
             leg.rotation_euler = (0, 0, math.radians(rot))
             leg.parent = base_anchor
+            
+            # 🚨 FIX 3: Universal Infinigen Bevel for the metal prongs
+            butil.modify_mesh(leg, type='BEVEL', width=0.005, segments=3)
 
 
 def build_from_recipe(payload):
     print("\n [MARS_LIB] Initializing Universal Assembly...")
     
-    bbox = payload["overall_bounding_box"]
-    w, d, h = bbox["width_m"], bbox["depth_m"], bbox["height_m"]
+    # 🚨 FIX 1: Safe Bounding Box Extraction 
+    # (Defaults to a 1x1x1 cube if the AI completely forgets the dimensions)
+    bbox = payload.get("overall_bounding_box", {})
+    w = bbox.get("width_m", 1.0)
+    d = bbox.get("depth_m", 1.0)
+    h = bbox.get("height_m", 1.0)
 
     # The Master Anchor (Everything glues to this)
     master_parent = butil.spawn_cube(size=0.001)
     master_parent.name = "MARS_Root"
+    master_parent.location = (0, 0, 0) # Explicitly lock to world center
 
     # THE LOOP
     for part in payload.get("component_recipe", []):
-        ptype = part.get("type")
+        
+        # 🚨 FIX 2: Clean the Type string!
+        ptype = clean_string(part.get("type", "unknown"))
         
         if ptype == "surface":
             print(f"    Spawning Surface (Z: {part.get('z_position_ratio')})")
@@ -203,7 +254,7 @@ def build_from_recipe(payload):
             spawn_base(part, w, d, h, master_parent)
             
         else:
-            print(f"   ⚠️ WARNING: AI hallucinated unknown component: {ptype}")
+            print(f" ⚠️ WARNING: AI hallucinated unknown component: {ptype}")
 
-    print("✅ [MARS_LIB] Assembly complete!")
+    print("[MARS_LIB] Assembly complete!")
     return master_parent
