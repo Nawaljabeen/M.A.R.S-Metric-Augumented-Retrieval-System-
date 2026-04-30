@@ -3,46 +3,66 @@ import math
 from infinigen import butil
 
 
+import math
+import bpy
+from infinigen import butil
+
+def clean_string(s):
+    """Safety rail to fix messy AI strings."""
+    return str(s).lower().strip()
+
 def spawn_surface(part, w, d, h, parent):
-    """Spawns flat boards, shelves, or soft cushions."""
+    """Spawns flat structural boards, shelves, or hard seats."""
+    
+    #Clean & Extract Math
+    shape = clean_string(part.get("shape", "square"))
     thick = h * part.get("thickness_ratio", 0.05)
     z_pos = h * part.get("z_position_ratio", 1.0)
     
-    # AI can scale things down (e.g., a shelf that fits inside table legs)
     scale_w = w * part.get("scale_w", 1.0)
     scale_d = d * part.get("scale_d", 1.0)
 
-    # 1. Spawn the base proxy
-    surf = butil.spawn_cube(size=1)
+    #PROPORTION LOCK (for circles)
+    if shape == "circular":
+        diameter = min(scale_w, scale_d)
+        scale_w = diameter
+        scale_d = diameter
+
+    #GEOMETRY GENERATION (Cylinder Implementation)
+    if shape in ["circular", "oval"]:
+        # Spawn cylinder with reduced vertices (24 instead of 32 for optimal low-poly)
+        # We set 'depth=thick' immediately so it's the correct height right out of the box.
+        bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=1, depth=thick)
+        surf = bpy.context.active_object
+        
+        # Scale X and Y. (Z is 1 because we already set depth=thick)
+        surf.scale = (scale_w / 2, scale_d / 2, 1) 
+    else:
+        # Standard Infinigen Proxy Box
+        surf = butil.spawn_cube(size=1)
+        surf.scale = (scale_w, scale_d, thick)
+
     surf.name = f"MARS_Surface_{z_pos}"
-    surf.scale = (scale_w, scale_d, thick)
-    surf.location = (0, 0, z_pos - (thick / 2))
+    
+    # Y-AXIS ALIGNMENT (Front, Back, Center)
+    y_off = 0
+    y_pos_mod = clean_string(part.get("y_position", "center"))
+    if y_pos_mod == "front":
+        y_off = -(d / 2) + (thick / 2)
+    elif y_pos_mod == "back":
+        y_off = (d / 2) - (thick / 2)
+
+    surf.location = (0, y_off, z_pos - (thick / 2))
     surf.parent = parent
 
-    # 2. ROTATION (Pitch Angle)
+    # ROTATION (Pitch Angle for Backrests/Headboards)
     angle = part.get("pitch_angle", 0)
     if angle != 0:
         surf.rotation_euler = (math.radians(angle), 0, 0)
 
-    # 3. THE FINESSE: Is it a hard board or a soft cushion?
-    if part.get("is_cushion", False):
-        # Puff it up into a seat!
-        subsurf = surf.modifiers.new(name="Smooth", type='SUBSURF')
-        subsurf.levels = 3 
-        
-        cast = surf.modifiers.new(name="Puff", type='CAST')
-        cast.cast_type = 'SPHERE'
-        cast.factor = 0.6  # 0.0 is flat, 1.0 is a ball. 0.6 is a nice cushion.
-        
-        # Shade smooth for export
-        for poly in surf.data.polygons:
-            poly.use_smooth = True
-            
-    else:
-        # It's a hard board: Add a subtle Bevel so the edges catch light
-        bevel = surf.modifiers.new(name="Edge_Bevel", type='BEVEL')
-        bevel.width = 0.01 # 1cm rounded edge
-        bevel.segments = 3
+    #INFINIGEN BEVEL
+    # Applies a clean, subtle edge bevel to both Cubes AND Cylinders.
+    butil.modify_mesh(surf, type='BEVEL', width=0.01, segments=3)
 
 def spawn_support(part, w, d, h, parent):
     """Spawns vertical or horizontal pillars (legs, stretchers)."""
