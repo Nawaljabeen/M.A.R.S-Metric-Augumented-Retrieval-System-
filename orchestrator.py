@@ -12,35 +12,33 @@ import mars_lib
 
 # 3. Trigger Execution
 test_payload = {
-    # --- FROM THE RAG DATABASE ---
     "overall_bounding_box": {
-        "width_m": 1.0,   # (Flipped W and D so it matches the image's orientation)
-        "depth_m": 0.75,  
+        "width_m": 1.0,
+        "depth_m": 0.75,
         "height_m": 0.48
     },
-    # --- FROM THE VISION AI ---
     "component_recipe": [
-        # The Main Tabletop
         {
-            "type": "surface", 
-            "shape": "square", 
-            "is_cushion": False, 
-            "z_position_ratio": 1.0
+            "type": "surface",
+            "shape": "square",
+            "is_cushion": False,
+            "z_position_ratio": 1.0,
+            "x_position": "center",
+            "y_position": "center"
         },
-        # The Lower Shelf (Scaled down by 15% to fit between the legs)
         {
-            "type": "surface", 
-            "shape": "square", 
-            "is_cushion": False, 
-            "z_position_ratio": 0.3, 
-            "scale_w": 0.85, 
-            "scale_d": 0.85
+            "type": "surface",
+            "shape": "square",
+            "is_cushion": False,
+            "z_position_ratio": 0.4,
+            "x_position": "center",
+            "y_position": "center"
         },
-        # The 4 Chunky Legs
         {
-            "type": "support", 
-            "count": 4, 
-            "shape": "box"
+            "type": "support",
+            "count": 4,
+            "shape": "box",
+            "z_position_ratio": 0.0
         }
     ]
 }
@@ -56,7 +54,7 @@ bpy.context.view_layer.update()
 output_dir = "/content/drive/MyDrive/MARS/output/"
 os.makedirs(output_dir, exist_ok=True)  # Safety net: creates the folder if it's missing
 
-output_path = os.path.join(output_dir, "mars_test_table.glb")
+output_path = os.path.join(output_dir, "mars_LACK_table.glb")
 
 # Export the scene as a GLB
 bpy.ops.export_scene.gltf(filepath=output_path)

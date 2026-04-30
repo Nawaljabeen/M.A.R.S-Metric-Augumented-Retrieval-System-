@@ -71,14 +71,21 @@ def spawn_support(part, w, d, h, parent):
     count = part.get("count", 4)
     shape = clean_string(part.get("shape", "box"))
     thick = part.get("thickness_m", 0.05)
-    z_top = h * part.get("z_position_ratio", 1.0) 
     y_pos_mod = clean_string(part.get("y_position", "center"))
+    
+    # 🚨 FIX: The Pancake Leg Catch
+    z_ratio = part.get("z_position_ratio", 1.0)
+    if z_ratio <= 0.01: 
+        # If AI says the leg is on the floor (0.0), force it to stretch to the top
+        z_ratio = 1.0 
+        
+    z_top = h * z_ratio 
 
-    #Safety Padding (Keeps legs 1cm inside the corners)
+    # Safety Padding (Keeps legs 1cm inside the corners)
     x_off = (w / 2) - (thick / 2) - 0.01
     y_off = (d / 2) - (thick / 2) - 0.01
 
-    #  Location Routing Map
+    # Location Routing Map
     locations = []
     if count == 4:
         # Standard corners
@@ -89,7 +96,7 @@ def spawn_support(part, w, d, h, parent):
             (-x_off, -y_off, z_top/2)
         ]
     elif count == 2:
-        #FIX: Y-Axis awareness for beds/sofas
+        # FIX: Y-Axis awareness for beds/sofas
         if y_pos_mod == "back":
             locations = [(x_off, y_off, z_top/2), (-x_off, y_off, z_top/2)]
         elif y_pos_mod == "front":
@@ -118,10 +125,9 @@ def spawn_support(part, w, d, h, parent):
         leg.location = loc
         leg.parent = parent
         
-        #  UNIVERSAL BEVEL: Soften sharp edges slightly 
+        # UNIVERSAL BEVEL: Soften sharp edges slightly 
         # (width is smaller than the tabletop bevel so it doesn't break thin legs)
         butil.modify_mesh(leg, type='BEVEL', width=0.005, segments=2)
-
 
 def spawn_storage_box(part, w, d, h, parent):
     """Spawns a solid geometric volume for cabinets, dressers, or desk pedestals."""
