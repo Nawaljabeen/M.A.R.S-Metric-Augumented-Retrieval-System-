@@ -64,31 +64,32 @@ def spawn_surface(part, w, d, h, parent):
     # Applies a clean, subtle edge bevel to both Cubes AND Cylinders.
     butil.modify_mesh(surf, type='BEVEL', width=0.01, segments=3)
 
-def spawn_support(part, w, d, h, parent):
+# FIX: Added 'main_shape' to the signature with a default fallback
+def spawn_support(part, w, d, h, parent, main_shape="square"):
     """Spawns table legs, chair legs, or bed frame pillars."""
     
-    # 1. Clean & Extract Data
     count = part.get("count", 4)
     shape = clean_string(part.get("shape", "box"))
     thick = part.get("thickness_m", 0.05)
     y_pos_mod = clean_string(part.get("y_position", "center"))
     
-    # 🚨 FIX: The Pancake Leg Catch
     z_ratio = part.get("z_position_ratio", 1.0)
     if z_ratio <= 0.01: 
-        # If AI says the leg is on the floor (0.0), force it to stretch to the top
         z_ratio = 1.0 
-        
     z_top = h * z_ratio 
 
-    # Safety Padding (Keeps legs 1cm inside the corners)
-    x_off = (w / 2) - (thick / 2) - 0.01
-    y_off = (d / 2) - (thick / 2) - 0.01
+    # FIX: Circular Table Leg Math
+    if main_shape in ["circular", "oval", "round"]:
+        # Pull legs inward to the 45-degree perimeter line of the circle
+        x_off = ((w / 2) * 0.707) - (thick / 2) - 0.01
+        y_off = ((d / 2) * 0.707) - (thick / 2) - 0.01
+    else:
+        # Standard square table corners
+        x_off = (w / 2) - (thick / 2) - 0.01
+        y_off = (d / 2) - (thick / 2) - 0.01
 
-    # Location Routing Map
     locations = []
     if count == 4:
-        # Standard corners
         locations = [
             (x_off, y_off, z_top/2), 
             (-x_off, y_off, z_top/2), 
@@ -96,28 +97,22 @@ def spawn_support(part, w, d, h, parent):
             (-x_off, -y_off, z_top/2)
         ]
     elif count == 2:
-        # FIX: Y-Axis awareness for beds/sofas
         if y_pos_mod == "back":
             locations = [(x_off, y_off, z_top/2), (-x_off, y_off, z_top/2)]
         elif y_pos_mod == "front":
             locations = [(x_off, -y_off, z_top/2), (-x_off, -y_off, z_top/2)]
         else:
-            locations = [(x_off, 0, z_top/2), (-x_off, 0, z_top/2)] # Center sides
+            locations = [(x_off, 0, z_top/2), (-x_off, 0, z_top/2)] 
     elif count == 3:
-        # FIX: Tripod logic (Two back, one front-center)
         locations = [(x_off, y_off, z_top/2), (-x_off, y_off, z_top/2), (0, -y_off, z_top/2)]
     else:
-        # Single pedestal (dead center)
         locations = [(0, 0, z_top/2)] 
 
-    # 4. Geometry Generation Loop
     for i, loc in enumerate(locations):
         if shape in ["cylinder", "circular", "round"]:
-            # FIX: Native low-poly cylinder for smooth round legs (16 vertices is perfect for legs)
             bpy.ops.mesh.primitive_cylinder_add(vertices=16, radius=thick/2, depth=z_top)
             leg = bpy.context.active_object
         else:
-            # Infinigen Proxy Box for square legs
             leg = butil.spawn_cube(size=1)
             leg.scale = (thick, thick, z_top)
 
@@ -125,8 +120,6 @@ def spawn_support(part, w, d, h, parent):
         leg.location = loc
         leg.parent = parent
         
-        # UNIVERSAL BEVEL: Soften sharp edges slightly 
-        # (width is smaller than the tabletop bevel so it doesn't break thin legs)
         butil.modify_mesh(leg, type='BEVEL', width=0.005, segments=2)
 
 def spawn_storage_box(part, w, d, h, parent):
@@ -140,7 +133,7 @@ def spawn_storage_box(part, w, d, h, parent):
     scale_w = w * part.get("scale_w", 1.0)
     scale_d = d * part.get("scale_d", 1.0)
 
-    # 🚨 FIX 1: X-Axis Asymmetry (Left, Right, Center) with Clean String
+    # FIX 1: X-Axis Asymmetry (Left, Right, Center) with Clean String
     x_off = 0
     x_pos_mod = clean_string(part.get("x_position", "center"))
     if x_pos_mod == "left":
@@ -148,7 +141,7 @@ def spawn_storage_box(part, w, d, h, parent):
     elif x_pos_mod == "right":
         x_off = (w / 2) - (scale_w / 2)
 
-    # 🚨 FIX 2: Y-Axis Asymmetry (Front, Back, Center)
+    # FIX 2: Y-Axis Asymmetry (Front, Back, Center)
     y_off = 0
     y_pos_mod = clean_string(part.get("y_position", "center"))
     if y_pos_mod == "front":
@@ -156,7 +149,7 @@ def spawn_storage_box(part, w, d, h, parent):
     elif y_pos_mod == "back":
         y_off = (d / 2) - (scale_d / 2)
 
-    # 🚨 FIX 3: Geometry Generation (In case of a round laundry basket or cylindrical pedestal)
+    #FIX 3: Geometry Generation (In case of a round laundry basket or cylindrical pedestal)
     if shape in ["cylinder", "circular", "oval"]:
         bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=1, depth=thick)
         box = bpy.context.active_object
@@ -167,12 +160,12 @@ def spawn_storage_box(part, w, d, h, parent):
 
     box.name = f"MARS_Storage_{z_pos}"
     
-    # 🚨 FIX 4: Z-Axis Clipping math
+    # FIX 4: Z-Axis Clipping math
     # Assuming z_pos is the resting surface (like the floor), we shift UP by half thickness
     box.location = (x_off, y_off, z_pos + (thick / 2)) 
     box.parent = parent
 
-    # 🚨 FIX 5: Universal Infinigen Bevel
+    # fiX 5: Universal Infinigen Bevel
     butil.modify_mesh(box, type='BEVEL', width=0.005, segments=3)
 
 def spawn_base(part, w, d, h, parent):
@@ -225,22 +218,25 @@ def spawn_base(part, w, d, h, parent):
 def build_from_recipe(payload):
     print("\n [MARS_LIB] Initializing Universal Assembly...")
     
-    # 🚨 FIX 1: Safe Bounding Box Extraction 
-    # (Defaults to a 1x1x1 cube if the AI completely forgets the dimensions)
     bbox = payload.get("overall_bounding_box", {})
     w = bbox.get("width_m", 1.0)
     d = bbox.get("depth_m", 1.0)
     h = bbox.get("height_m", 1.0)
 
-    # The Master Anchor (Everything glues to this)
     master_parent = butil.spawn_cube(size=0.001)
     master_parent.name = "MARS_Root"
-    master_parent.location = (0, 0, 0) # Explicitly lock to world center
+    master_parent.location = (0, 0, 0) 
+
+    # FIX: Scan for the main surface shape to inform the legs
+    recipe = payload.get("component_recipe", [])
+    main_shape = "square" # Default
+    for part in recipe:
+        if clean_string(part.get("type", "")) == "surface":
+            main_shape = clean_string(part.get("shape", "square"))
+            break # Grab the first surface we see and assume it's the tabletop
 
     # THE LOOP
-    for part in payload.get("component_recipe", []):
-        
-        # 🚨 FIX 2: Clean the Type string!
+    for part in recipe:
         ptype = clean_string(part.get("type", "unknown"))
         
         if ptype == "surface":
@@ -249,7 +245,8 @@ def build_from_recipe(payload):
             
         elif ptype == "support":
             print(f"    Spawning Support ({part.get('count')} {part.get('shape')}s)")
-            spawn_support(part, w, d, h, master_parent)
+            #FIX: Pass 'main_shape' down to the support function!
+            spawn_support(part, w, d, h, master_parent, main_shape)
             
         elif ptype == "storage_box":
             print(f"    Spawning Storage ({part.get('x_position')})")
@@ -260,7 +257,7 @@ def build_from_recipe(payload):
             spawn_base(part, w, d, h, master_parent)
             
         else:
-            print(f" ⚠️ WARNING: AI hallucinated unknown component: {ptype}")
+            print(f" WARNING: AI hallucinated unknown component: {ptype}")
 
     print("[MARS_LIB] Assembly complete!")
     return master_parent
