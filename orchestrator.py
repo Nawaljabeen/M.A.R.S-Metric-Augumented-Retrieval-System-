@@ -13,26 +13,26 @@ import mars_lib
 # 3. Trigger Execution
 test_payload = {
     "overall_bounding_box": {
-        "width_m": 1.18,
-        "depth_m": 0.45,
-        "height_m": 0.74
+        "width_m": 0.38,
+        "depth_m": 0.36,
+        "height_m": 0.84
     },
     "component_recipe": [
         {
             "type": "surface",
-            "shape": "circular",
-            "is_cushion": False,
+            "shape": "square",
+            "is_cushion": True,
             "z_position_ratio": 0.95
         },
         {
             "type": "support",
             "count": 4,
-            "shape": "cylinder",
-            "z_position_ratio": 0.45
+            "shape": "box",
+            "z_position_ratio": 0.4,
+            "pitch_angle": 5
         }
     ]
 }
-
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete()
 
@@ -44,7 +44,7 @@ bpy.context.view_layer.update()
 output_dir = "/content/drive/MyDrive/MARS/output/"
 os.makedirs(output_dir, exist_ok=True)  # Safety net: creates the folder if it's missing
 
-output_path = os.path.join(output_dir, "mars_circular_table.glb")
+output_path = os.path.join(output_dir, "mars_stool.glb")
 
 # Export the scene as a GLB
 bpy.ops.export_scene.gltf(filepath=output_path)
