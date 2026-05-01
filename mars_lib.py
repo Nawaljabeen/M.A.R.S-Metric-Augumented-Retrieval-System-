@@ -53,7 +53,7 @@ def spawn_surface(part, w, d, h, parent):
     elif y_pos_mod == "back":
         y_off = (d / 2) - (thick / 2)
 
-    surf.location = (0, y_off, z_pos - (thick / 2))
+    surf.location = (0, y_off, z_pos + (thick / 2))
     surf.parent = parent
 
     # ROTATION (Pitch Angle for Backrests/Headboards)
@@ -65,7 +65,6 @@ def spawn_surface(part, w, d, h, parent):
     # Applies a clean, subtle edge bevel to both Cubes AND Cylinders.
     butil.modify_mesh(surf, type='BEVEL', width=0.01, segments=3)
 
-# 🚨 FIX: Added main_surface_z parameter
 def spawn_support(part, w, d, h, parent, main_shape="square", main_surface_z=1.0, main_surface_thick=0.05, armrest_z=None):
     """Spawns table legs, chair legs, or bed frame pillars."""
     
@@ -80,7 +79,9 @@ def spawn_support(part, w, d, h, parent, main_shape="square", main_surface_z=1.0
     # Target height is armrest_z if it exists; otherwise, it's the seat (main_surface_z).
     target_z = armrest_z if armrest_z is not None else main_surface_z
     
-    z_ratio = part.get("z_position_ratio", 1.0)
+    # 🚨 FIX 1: Default to 0.0 so the safety net catches it!
+    z_ratio = part.get("z_position_ratio", 0.0)
+    
     if z_ratio <= 0.01:
         z_ratio = target_z
     
@@ -95,17 +96,19 @@ def spawn_support(part, w, d, h, parent, main_shape="square", main_surface_z=1.0
     z_top = h * z_ratio 
 
     # 🚨 THE UNDERSIDE CUT
-    # Chop height so it rests UNDER the object it supports rather than clipping through.
     if armrest_z is not None and abs(z_ratio - armrest_z) < 0.02:
-        z_top -= 0.05 # Standard Armrest Thickness
-    elif abs(z_ratio - main_surface_z) < 0.02:
-        z_top -= main_surface_thick
+        # Armrest origin is centered, so we only chop HALF its thickness (0.025) to reach the bottom
+        z_top -= 0.025 
+    
+    # Notice we completely DELETED the 'elif' cut for main_surface_z! 
+    # Because the seat builds upwards now, the legs can go straight to the target line.
 
     # --- X/Y Geometry Math ---
+    # 🚨 FIX 2: Ellipse Math for Ovals
     if main_shape in ["circular", "oval", "round"]:
-        diameter = min(w, d)
-        x_off = ((diameter / 2) * 0.707) - (thick / 2) - 0.01
-        y_off = ((diameter / 2) * 0.707) - (thick / 2) - 0.01
+        # Calculate X using Width, and Y using Depth independently
+        x_off = ((w / 2) * 0.707) - (thick / 2) - 0.01
+        y_off = ((d / 2) * 0.707) - (thick / 2) - 0.01
     else:
         x_off = (w / 2) - (thick / 2) - 0.01
         y_off = (d / 2) - (thick / 2) - 0.01
@@ -245,7 +248,6 @@ def spawn_base(part, w, d, h, parent):
             # 🚨 FIX 3: Universal Infinigen Bevel for the metal prongs
             butil.modify_mesh(leg, type='BEVEL', width=0.005, segments=3)
 
-
 def spawn_backrest(part, w, d, h, parent, seat_z):
     """
     Spawns a vertical backrest that sits flush on top of the seat surface
@@ -253,17 +255,15 @@ def spawn_backrest(part, w, d, h, parent, seat_z):
     """
     
     # 1. Base Dimensions
-    # A standard wooden/padded backrest is about 5cm thick.
     thick = part.get("thickness_m", 0.05) 
-    
-    # We allow the AI to scale the width (e.g., if it wants a narrow backrest), 
-    # but it defaults to the full width of the chair.
     scale_w = w * part.get("scale_w", 1.0) 
     
+    # Convert ratio to absolute meters
+    seat_z_m = h * seat_z
+    
     # 2. The Architectural Math
-    # The backrest doesn't start at the floor; it starts on top of the seat.
-    # So, its total height is the bounding box height minus the seat height.
-    back_height = h - seat_z 
+    # 🚨 FIXED: Now subtracting the absolute meters, not the ratio!
+    back_height = h - seat_z_m 
 
     # 3. Geometry Generation
     back = butil.spawn_cube(size=1)
@@ -273,19 +273,13 @@ def spawn_backrest(part, w, d, h, parent, seat_z):
     back.scale = (scale_w, thick, back_height)
     
     # 4. Y-Axis Positioning (The "Flush Back" Math)
-    # The absolute back of the bounding box is at (d / 2).
-    # Since the origin point of the cube is perfectly in its center, 
-    # placing it at (d / 2) would leave exactly half of it hanging off the edge in thin air.
-    # We pull it inward by half its own thickness so the back face sits flush.
     y_off = (d / 2) - (thick / 2)
     
     # 5. Z-Axis Positioning (The "Stacking" Math)
-    # The bottom of the backrest needs to touch 'seat_z'.
-    # Because the origin point is in the center, we start at 'seat_z' 
-    # and shift UP by exactly half the height of the backrest.
-    z_off = seat_z + (back_height / 2)
+    # 🚨 FIXED: Now stacking on top of the absolute meter height!
+    z_off = seat_z_m + (back_height / 2)
     
-    # Apply locations (X is 0 so it stays perfectly centered left-to-right)
+    # Apply locations
     back.location = (0, y_off, z_off)
     back.parent = parent
     
@@ -299,25 +293,19 @@ def spawn_armrest(part, w, d, h, parent, seat_z):
     """
     
     # 1. Base Dimensions
-    # We look for a thickness, defaulting to 5cm for standard armrests.
     thick = part.get("thickness_m", 0.05)
-    
-    # We need the backrest thickness to ensure the armrests don't clip through it.
-    # We use our standard 5cm here to perfectly match the spawn_backrest logic.
     backrest_thick = 0.05 
     
+    # Convert ratio to absolute meters
+    seat_z_m = h * seat_z
+    
     # 2. Z-Axis Positioning (The "Height" Math)
-    # The armrest needs to sit halfway between the seat and the very top of the chair.
-    backrest_height = h - seat_z
-    arm_z = seat_z + (backrest_height * 0.5)
+    # 🚨 FIXED: Using seat_z_m for both calculations!
+    backrest_height = h - seat_z_m
+    arm_z = seat_z_m + (backrest_height * 0.5)
     
     # 3. Y-Axis Positioning & Length (The "Depth" Math)
-    # The armrest spans the whole depth of the chair, MINUS the backrest.
-    # If we didn't subtract the backrest thickness, the arm would poke out the back!
     arm_length = d - backrest_thick
-    
-    # Because we chopped off the backrest thickness, we have to shift the armrest 
-    # slightly forward so it perfectly touches the backrest without clipping inside it.
     y_off = -(backrest_thick / 2)
     
     # 4. Spawning the Left and Right Arms
@@ -329,8 +317,6 @@ def spawn_armrest(part, w, d, h, parent, seat_z):
         arm.scale = (thick, arm_length, thick) 
         
         # 5. X-Axis Positioning (The "Edge" Math)
-        # Push to the boundary (w / 2), then pull it back inward by half its own 
-        # thickness so the outer edge sits perfectly flush with the bounding box.
         x_off = ((w / 2) - (thick / 2)) * x_mult
         
         arm.location = (x_off, y_off, arm_z)

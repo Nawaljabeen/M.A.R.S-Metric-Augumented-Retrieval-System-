@@ -13,33 +13,36 @@ import mars_lib
 # 3. Trigger Execution
 test_payload = {
     "overall_bounding_box": {
-        "width_m": 0.83,
-        "depth_m": 0.83,
-        "height_m": 0.55
+        "width_m": 0.45,
+        "depth_m": 0.32,
+        "height_m": 0.65
     },
     "component_recipe": [
         {
             "type": "surface",
-            "shape": "circular",
+            "shape": "oval",
             "is_cushion": False,
-            "z_position_ratio": 0.8
+            "z_position_ratio": 0.45,
+            "thickness_ratio": 0.03
         },
         {
             "type": "support",
-            "count": 1,
+            "count": 4,
             "shape": "cylinder",
-            "z_position_ratio": 0.4
+            "pitch_angle": 7,
+            "thickness_m": 0.04
         },
         {
-            "type": "base",
-            "z_position_ratio": 0.0
+            "type": "backrest",
+            "is_cushion": False,
+            "pitch_angle": 5,
+            "z_position_ratio": 0.7,
+            "thickness_m": 0.03,
+            "scale_w": 0.8,
+            "y_position": "back"
         }
     ]
 }
-
-
-
-
 
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete()
@@ -52,7 +55,7 @@ bpy.context.view_layer.update()
 output_dir = "/content/drive/MyDrive/MARS/output/"
 os.makedirs(output_dir, exist_ok=True)  # Safety net: creates the folder if it's missing
 
-output_path = os.path.join(output_dir, "mars_bASETABLE.glb")
+output_path = os.path.join(output_dir, "mars_woodchair.glb")
 
 # Export the scene as a GLB
 bpy.ops.export_scene.gltf(filepath=output_path)
