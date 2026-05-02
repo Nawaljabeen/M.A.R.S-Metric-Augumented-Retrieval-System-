@@ -2,7 +2,7 @@ import os
 import sys
 import bpy
 
-# 1. Tell Blender where the custom library is
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
@@ -10,41 +10,42 @@ if current_dir not in sys.path:
 import mars_lib
 
 
-# 3. Trigger Execution
+
 test_payload = {
     "overall_bounding_box": {
-        "width_m": 0.57,
-        "depth_m": 0.63,
+        "width_m": 1.6,
+        "depth_m": 2.0,
         "height_m": 0.99
     },
     "component_recipe": [
         {
-            "type": "support",
-            "count": 4,
-            "shape": "box",
-            "thickness_m": 0.05
+            "type": "surface",
+            "shape": "square",
+            "is_cushion": False,
+            "z_position_ratio": 0.2,
+            "scale_w": 1.0,
+            "scale_d": 1.0,
+            "thickness_ratio": 0.4
         },
         {
             "type": "surface",
             "shape": "square",
-            "is_cushion": False,
-            "z_position_ratio": 0.4,
-            "thickness_ratio": 0.05
-        },
-        {
-            "type": "armrest",
-            "is_cushion": False,
-            "z_position_ratio": 0.65,
-            "thickness_m": 0.04
+            "is_cushion": True,
+            "z_position_ratio": 0.5,
+            "scale_w": 0.9,
+            "scale_d": 0.85,
+            "thickness_ratio": 0.2
         },
         {
             "type": "backrest",
             "is_cushion": False,
-            "thickness_m": 0.03
+            "z_position_ratio": 0.7,
+            "thickness_m": 0.05,
+            "scale_w": 1.0,
+            "y_position": "back"
         }
     ]
 }
-
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete()
 
@@ -56,7 +57,7 @@ bpy.context.view_layer.update()
 output_dir = "/content/drive/MyDrive/MARS/output/"
 os.makedirs(output_dir, exist_ok=True)  # Safety net: creates the folder if it's missing
 
-output_path = os.path.join(output_dir, "mars_ARMREST.glb")
+output_path = os.path.join(output_dir, "mars_brimnesbed2.glb")
 
 # Export the scene as a GLB
 bpy.ops.export_scene.gltf(filepath=output_path)
