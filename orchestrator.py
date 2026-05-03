@@ -1,64 +1,54 @@
 import os
 import sys
+import json
 import bpy
 
-
+#Tellong Blender where the custom library is
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
     
 import mars_lib
 
+#Catch the JSON file passed from the AI Pipeline
+
+argv = sys.argv
+if "--" not in argv:
+    print("❌ [ORCHESTRATOR ERROR]: No JSON payload provided!")
+    print("Usage: blender -b -P orchestrator.py -- /path/to/payload.json")
+    sys.exit(1)
+
+#Get the filepath immediately after the '--'
+json_filepath = argv[argv.index("--") + 1]
+
+if not os.path.exists(json_filepath):
+    print(f"❌ [ORCHESTRATOR ERROR]: Cannot find JSON file at {json_filepath}")
+    sys.exit(1)
 
 
-test_payload = {
-    "overall_bounding_box": {
-        "width_m": 1.6,
-        "depth_m": 2.0,
-        "height_m": 0.99
-    },
-    "component_recipe": [
-        {
-            "type": "surface",
-            "shape": "square",
-            "is_cushion": False,
-            "z_position_ratio": 0.2,
-            "scale_w": 1.0,
-            "scale_d": 1.0,
-            "thickness_ratio": 0.4
-        },
-        {
-            "type": "surface",
-            "shape": "square",
-            "is_cushion": True,
-            "z_position_ratio": 0.5,
-            "scale_w": 0.9,
-            "scale_d": 0.85,
-            "thickness_ratio": 0.2
-        },
-        {
-            "type": "backrest",
-            "is_cushion": False,
-            "z_position_ratio": 0.7,
-            "thickness_m": 0.05,
-            "scale_w": 1.0,
-            "y_position": "back"
-        }
-    ]
-}
+print(f"\n [ORCHESTRATOR] Reading AI payload from: {json_filepath}")
+with open(json_filepath, 'r') as f:
+    dynamic_payload = json.load(f)
+
+#Clear the Blender Scene
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete()
 
-my_object = mars_lib.build_from_recipe(test_payload)
+
+print(" [ORCHESTRATOR] Firing MARS_LIB Engine...")
+my_object = mars_lib.build_from_recipe(dynamic_payload)
 
 bpy.context.view_layer.update()
-# 1. Clear scene
 
+#Export Logic
 output_dir = "/content/drive/MyDrive/MARS/output/"
-os.makedirs(output_dir, exist_ok=True)  # Safety net: creates the folder if it's missing
+os.makedirs(output_dir, exist_ok=True)  
 
-output_path = os.path.join(output_dir, "mars_brimnesbed2.glb")
+# Dynamically name 3D file based onJSON file name
+
+base_name = os.path.basename(json_filepath).replace('.json', '')
+output_path = os.path.join(output_dir, f"{base_name}.glb")
 
 # Export the scene as a GLB
 bpy.ops.export_scene.gltf(filepath=output_path)
-print(f"\n✅ --- SUCCESS: 3D TABLE GENERATED AND SAVED TO {output_path} ---")
+print(f"\n✅ --- SUCCESS: 3D MODEL GENERATED AND SAVED TO {output_path} ---")
